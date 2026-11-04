@@ -1006,6 +1006,10 @@ app.post('/api/generate-test', async (req, res) => {
 // 3. NEW: File Download Proxy Endpoint
 app.get('/api/download-processed-file/:filename', async (req, res) => {
     const { filename } = req.params;
+    // P1-3 traversal guard (defence in depth; python-service is authoritative).
+    if (/\.\.|\/|[\\%]/.test(filename) || !/^[A-Za-z0-9._-]+$/.test(filename)) {
+        return res.status(400).json({ error: 'Invalid filename' });
+    }
     const pythonServiceUrl = `http://127.0.0.1:8000/api/get-processed-file/${filename}`;
 
     console.log(`Proxying download request for: ${filename}`);

@@ -1,4 +1,5 @@
 import os
+import re
 import uvicorn
 
 import shutil
@@ -185,6 +186,15 @@ async def get_processed_file(filename: str):
     Serves the processed PPTX file from the temp directory.
 
     """
+
+    # P1-3 traversal guard (authoritative gate): allowlist + containment.
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    resolved = (TEMP_DIR.resolve() / filename).resolve()
+    if not resolved.is_relative_to(TEMP_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     file_path = TEMP_DIR / filename
 
