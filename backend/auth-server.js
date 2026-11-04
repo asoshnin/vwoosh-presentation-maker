@@ -37,14 +37,17 @@ app.get('/healthz', (_req, res) => res.json({ status: 'ok', uptime: process.upti
 
 // --- Helper Function for Auth ---
 let accessToken = null;
-let tokenExpires = 0;
+let tokenExpiresAt = 0;
+let inflightPromise = null;
 
 async function getAccessToken() {
-    if (Date.now() < tokenExpires && accessToken) {
+    if (accessToken && Date.now() < tokenExpiresAt - 60_000) {
         return accessToken;
     }
-    try {
-        console.log('Refreshing access token via GoogleAuth...');
+    if (inflightPromise) {
+        return inflightPromise;
+    }
+    inflightPromise = (async () => {
         const client = await googleAuth.getClient();
         const tokenResponse = await client.getAccessToken();
 
@@ -56,12 +59,16 @@ async function getAccessToken() {
             throw new Error('Unable to obtain access token from GoogleAuth');
         }
 
+        const rawExp = tokenResponse?.res?.data?.expires_in;
+        const expiresInSec = typeof rawExp === 'number' ? rawExp : 1800;
         accessToken = tokenCandidate;
-        tokenExpires = Date.now() + 30 * 60 * 1000; // refresh every 30 minutes
+        tokenExpiresAt = Date.now() + expiresInSec * 1000;
         return accessToken;
-    } catch (err) {
-        console.error('Failed to get gcloud token:', err);
-        throw new Error('Could not authenticate with gcloud.');
+    })();
+    try {
+        return await inflightPromise;
+    } finally {
+        inflightPromise = null;
     }
 }
 
@@ -254,17 +261,21 @@ The JSON format MUST be:
 
             const jsonOutline = JSON.parse(cleanedText);
 
+            if (typeof jsonOutline !== 'object' || !jsonOutline || typeof jsonOutline.title !== 'string' || !jsonOutline.title.trim() || !Array.isArray(jsonOutline.slides) || jsonOutline.slides.length === 0) {
+                return res.status(422).json({ error: 'Invalid outline shape', details: 'expected {title: non-empty string, slides: [{title, content}][] with at least one slide}' });
+            }
+            for (const s of jsonOutline.slides) {
+                if (typeof s.title !== 'string' || typeof s.content !== 'string') {
+                    return res.status(422).json({ error: 'Invalid slide shape', details: 'each slide needs {title: string, content: string}' });
+                }
+            }
             console.log('Successfully parsed JSON outline.');
 
-            res.json(jsonOutline); // Send the parsed JSON to the frontend
+            res.json(jsonOutline);
 
         } catch (parseError) {
 
-            console.error('Failed to parse JSON from AI:', parseError);
-
-            console.error('Raw AI response was:', rawText);
-
-            throw new Error('Failed to parse the outline from the AI. The response was not valid JSON.');
+            return res.status(422).json({ error: 'Invalid outline JSON', details: parseError.message });
 
         }
 

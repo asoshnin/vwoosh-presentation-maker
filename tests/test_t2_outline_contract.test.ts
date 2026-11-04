@@ -2,7 +2,7 @@
 //
 // T2a (Node POST /api/generate-outline, Vertex mocked at the fetch boundary):
 //   - happy: Vertex returns a JSON string -> 200 {title, slides:[{title,content}]}
-//   - malformed: Vertex returns prose -> CURRENTLY 500 {error, details}.
+//   - malformed: Vertex returns prose -> now 422 {error: Invalid outline ...}. P1-7 fix.
 //     Correct-by-accident until P1-7 lands schema validation (-> 422); the
 //     Sprint 04 fix is the red->green flip, so this pins today's behaviour.
 // T2b (python-service POST /api/process-pptx, hit directly): missing-file
@@ -68,17 +68,16 @@ describe('T2a — Node /api/generate-outline', () => {
     expect(captured.vertexBody.contents.at(-1).role).toBe('user');
   });
 
-  it('malformed Vertex text currently returns 500 {error, details} (P1-7 will flip to 422)', async () => {
+  it('malformed Vertex text now returns 422 {error} (P1-7 flip — was 500, now 422 with envelope)', async () => {
     server.use(vertexTextHandler(MALFORMED_VERTEX_TEXT));
     try {
       const { status, json } = await postOutline({
         model: 'gemini-2.0-flash',
         history: [{ role: 'user', content: 'A deck about testing' }],
       });
-      expect(status).toBe(500);
-      expect(json.error).toBe('Failed to generate outline');
+      expect(status).toBe(422);
+      expect(json.error).toBe('Invalid outline JSON');
       expect(typeof json.details).toBe('string');
-      expect(json.details).toMatch(/not valid JSON/);
     } finally {
       server.resetHandlers();
     }
