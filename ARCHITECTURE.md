@@ -36,11 +36,13 @@ The orchestrator and generation engine. Four endpoints:
 | Endpoint | Purpose | Auth | Generation config |
 |---|---|---|---|
 | `POST /api/chat` | Strategy discussion — agentic conversation | `MODEL_API_KEY` → Meta Model API | `temperature: 0.7`, `maxOutputTokens: 4096` (creative guidance) |
-| `POST /api/generate-outline` | Deterministic outline `{title, slides[]}` from conversation history | `MODEL_API_KEY` → Meta Model API | `temperature: 0.0`, `topP: 0.0` (stable JSON) |
+| `POST /api/generate-outline` | Deterministic outline `{title, slides[]}` from conversation history | Meta key (store or `MODEL_API_KEY`) | `temperature: 0.0` (stable JSON, no topP) |
 | `POST /api/generate-presentation` | Branded PPTX synthesis from outline + brand kit | PptxGenJS only (no LLM) | — |
 | `POST /api/generate-debug-test` | 5-slide smoke test (shapes, bullets, tables, overlays) | PptxGenJS only | — |
-
-Also proxies legacy Z-order handover endpoints (`/generate-test`, `/download-processed-file/:filename`) that delegate to the Python service.
+| `GET /api/providers/meta` | Key status (masked) + model | — | — |
+| `PUT /api/providers/meta` | Set key (≥16 chars, server-only, `0600`) and/or model | — | — |
+| `DELETE /api/providers/meta/key` | Clear stored key | — | — |
+| `POST /api/providers/meta/test` | 4-token live call, human-readable result | — | — |
 
 ### 2.3 `python-service/` — FastAPI + python-pptx (port 8000)
 
@@ -102,9 +104,9 @@ No markdown fences, no conversational text.
 
 The response is cleaned (` ```json` stripped) and `JSON.parse`'d before returning to the frontend.
 
-### 3.5 Fallback policy
+### 3.5 Key management
 
-Google Vertex AI / Gemini is retained behind `USE_VERTEX_FALLBACK=1` for local debugging only. It is **not** the submission's inference path. See `backend/.env.example`; `VITE_GOOGLE_CLOUD_PROJECT` is absent in the submission unless explicitly opted in.
+Single-operator store (`backend/.meta-key.json`, `0600`, gitignored): `PUT` accepts a full key (never returned), `GET` returns only a first-4…last-4 mask, `DELETE` clears. Env `MODEL_API_KEY` remains the default when no store key exists. No key material in logs, errors, or the frontend bundle. There is no Vertex fallback — the app is Meta-only (guide §15 rev 7).
 
 ## 4. Presentation generation
 
@@ -118,9 +120,8 @@ Google Vertex AI / Gemini is retained behind `USE_VERTEX_FALLBACK=1` for local d
 
 | Variable | Required | Where |
 |---|---|---|
-| `MODEL_API_KEY` | **yes** | `backend/.env` — Meta Model API key from `https://dev.meta.ai` |
-| `VITE_GOOGLE_CLOUD_PROJECT` | only if `USE_VERTEX_FALLBACK=1` | Vertex AI project (fallback) |
-| `VITE_GOOGLE_CLOUD_LOCATION` | only with `USE_VERTEX_FALLBACK` | `global` |
+| `MODEL_API_KEY` | **yes** (or Settings store) | `backend/.env` — Meta Model API key (`LLM_…`) from `https://dev.meta.ai` |
+| `META_API_BASE` | no | override, default `https://api.meta.ai/v1` |
 
 `.env` is gitignored; `.env.example` is the contract for required vars. No secrets are committed.
 

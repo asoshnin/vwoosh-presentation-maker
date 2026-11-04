@@ -1,9 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { GoogleAuth } from 'google-auth-library';
 import PptxGenJS from 'pptxgenjs'; // Import pptxgenjs
-import axios from 'axios'; // Import axios
-import FormData from 'form-data'; // Import form-data
 import fs from 'fs'; // Import File System module
 import path from 'path'; // Import Path module
 import { fileURLToPath } from 'url';
@@ -17,18 +14,11 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 const app = express();
 const port = 3002;
 
-// --- Vertex AI Config ---
-const project = process.env.VITE_GOOGLE_CLOUD_PROJECT || 'YOUR_PROJECT_ID';
-const location = process.env.VITE_GOOGLE_CLOUD_LOCATION || 'global';
+// --- Meta API Config ---
+const META_API_BASE = process.env.META_API_BASE || 'https://api.meta.ai/v1';
+const META_API_KEY = process.env.MODEL_API_KEY;
 
-const googleAuth = new GoogleAuth({
-    scopes: [
-        'https://www.googleapis.com/auth/cloud-platform',
-        'https://www.googleapis.com/auth/generative-ai'
-    ],
-});
-
-console.log('Vertex AI Config:', { project, location });
+console.log('Meta API Config:', { base: META_API_BASE, keyPrefix: META_API_KEY ? `${META_API_KEY.slice(0, 4)}...` : '(missing)' });
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' })); // Increase limit for Base64 logo uploads
@@ -36,45 +26,16 @@ app.use(express.json({ limit: '10mb' })); // Increase limit for Base64 logo uplo
 app.get('/healthz', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
 // --- Helper Function for Auth ---
-let accessToken = null;
-let tokenExpiresAt = 0;
-let inflightPromise = null;
-
-async function getAccessToken() {
-    if (accessToken && Date.now() < tokenExpiresAt - 60_000) {
-        return accessToken;
+function getMetaAuth() {
+    const key = resolveMetaKey();
+    if (!key) {
+        throw new Error('Meta API key not configured — set MODEL_API_KEY in backend/.env or add one in Settings');
     }
-    if (inflightPromise) {
-        return inflightPromise;
-    }
-    inflightPromise = (async () => {
-        const client = await googleAuth.getClient();
-        const tokenResponse = await client.getAccessToken();
-
-        const tokenCandidate = typeof tokenResponse === 'string'
-            ? tokenResponse
-            : tokenResponse?.token;
-
-        if (!tokenCandidate) {
-            throw new Error('Unable to obtain access token from GoogleAuth');
-        }
-
-        const rawExp = tokenResponse?.res?.data?.expires_in;
-        const expiresInSec = typeof rawExp === 'number' ? rawExp : 1800;
-        accessToken = tokenCandidate;
-        tokenExpiresAt = Date.now() + expiresInSec * 1000;
-        return accessToken;
-    })();
-    try {
-        return await inflightPromise;
-    } finally {
-        inflightPromise = null;
-    }
+    return key;
 }
 
 /**
- * Calls Vertex AI generateContent. Pure move of the two duplicated blocks;
- * preserves current bugs (P1-4/5/6) so Sprint 04 can fix them in one place.
+ * Calls Meta chat completions to generate an outline.
  *
  * @param {object} args
  * @param {string} args.model
@@ -84,30 +45,123 @@ async function getAccessToken() {
  * @returns {Promise<{rawText:string, candidates:any[], json:any}>}
  */
 // Sprint 07: Muse-editable (dead-code removal follows, proof that 983-line file is touchable without 180s timeout).
-async function vertexGenerate({ model, contents, systemInstruction, generationConfig }) {
-    const token = await getAccessToken();
-    const body = { contents, ...(systemInstruction && { systemInstruction }), ...(generationConfig && { generationConfig }) };
-    const url = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
-    const response = await fetch(url, {
+async function generateOutline({ model, contents, systemInstruction, generationConfig }) {
+    const messages = [];
+    const systemText = systemInstruction?.parts?.[0]?.text;
+    if (systemText) {
+        messages.push({ role: 'system', content: systemText });
+    }
+    for (const item of contents ?? []) {
+        messages.push({
+            role: item.role === 'model' ? 'assistant' : item.role,
+            content: item.parts?.[0]?.text ?? ''
+        });
+    }
+    const body = { model, messages };
+    if (generationConfig?.temperature !== undefined) {
+        body.temperature = generationConfig.temperature;
+    }
+    const maxTokens = generationConfig?.max_tokens ?? generationConfig?.maxOutputTokens ?? generationConfig?.maxTokens;
+    if (maxTokens !== undefined) {
+        body.max_tokens = maxTokens;
+    }
+    const apiKey = getMetaAuth();
+    const response = await fetch(`${META_API_BASE}/chat/completions`, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(body)
     });
     if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`Vertex AI API error: ${response.status} - ${errorBody}`);
+        if (response.status === 401) {
+            throw new Error(`Meta API error: 401 - ${errorBody} (hint: MODEL_API_KEY must use LLM_ prefix)`);
+        }
+        throw new Error(`Meta API error: ${response.status} - ${errorBody}`);
     }
     const result = await response.json();
-    const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return { rawText, candidates: result.candidates ?? [], json: result };
+    const rawText = result.choices?.[0]?.message?.content || '';
+    return { rawText, candidates: result.choices ?? [], json: result };
 }
+
+// --- Meta key store (D5=(a), D6=(a): single-operator, server-side JSON, 0600) ---
+const META_STORE_PATH = path.join(__dirname, '.meta-key.json');
+
+function maskKey(key) {
+    if (!key || key.length < 8) return '***';
+    return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
+function loadMetaStore() {
+    try { return JSON.parse(fs.readFileSync(META_STORE_PATH, 'utf8')); } catch { return {}; }
+}
+
+function saveMetaStore(obj) {
+    fs.writeFileSync(META_STORE_PATH, JSON.stringify(obj, null, 2));
+    try { fs.chmodSync(META_STORE_PATH, 0o600); } catch {}
+}
+
+function resolveMetaKey() {
+    const store = loadMetaStore();
+    return store.apiKey || META_API_KEY || '';
+}
+
+app.get('/api/providers/meta', (_req, res) => {
+    const store = loadMetaStore();
+    res.json({ id: 'meta', configured: !!resolveMetaKey(), keyMask: store.apiKey ? maskKey(store.apiKey) : null, model: store.model || null });
+});
+
+app.put('/api/providers/meta', (req, res) => {
+    const { apiKey, model } = req.body || {};
+    if (typeof apiKey === 'string' && apiKey.trim()) {
+        if (apiKey.trim().length < 16) return res.status(400).json({ error: 'Key too short (≥16 chars)' });
+        const store = loadMetaStore();
+        store.apiKey = apiKey.trim();
+        if (typeof model === 'string' && model.trim()) store.model = model.trim();
+        saveMetaStore(store);
+        return res.json({ ok: true, keyMask: maskKey(store.apiKey) });
+    }
+    if (typeof model === 'string' && model.trim()) {
+        const store = loadMetaStore();
+        store.model = model.trim();
+        saveMetaStore(store);
+        return res.json({ ok: true });
+    }
+    return res.status(400).json({ error: 'Provide apiKey (≥16 chars) or model' });
+});
+
+app.delete('/api/providers/meta/key', (_req, res) => {
+    const store = loadMetaStore();
+    delete store.apiKey;
+    saveMetaStore(store);
+    res.json({ ok: true });
+});
+
+app.post('/api/providers/meta/test', async (req, res) => {
+    const store = loadMetaStore();
+    const key = (req.body?.apiKey || store.apiKey || META_API_KEY || '').trim();
+    const model = (req.body?.model || store.model || 'muse-spark-1.3-contributor').trim();
+    if (!key) return res.status(400).json({ ok: false, detail: 'No key configured — add one in Settings' });
+    const t0 = Date.now();
+    try {
+        const r = await fetch(`${META_API_BASE}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Reply with OK.' }], temperature: 0, max_tokens: 4 }),
+        });
+        const latencyMs = Date.now() - t0;
+        if (!r.ok) return res.json({ ok: false, detail: `Meta rejected the key (HTTP ${r.status}): ${(await r.text()).slice(0, 200)}`, latencyMs });
+        return res.json({ ok: true, detail: `OK — model ${model}`, latencyMs });
+    } catch (e) {
+        return res.json({ ok: false, detail: String(e?.message || e) });
+    }
+});
 
 // === API Endpoints ===
 
-// 1. Vertex AI Chat Endpoint (Existing)
+// 1. Meta Chat Endpoint (F1-swap: was Vertex AI Chat)
 app.post('/api/chat', async (req, res) => {
     try {
         const { model, message, history = [], config = {} } = req.body;
@@ -125,7 +179,7 @@ app.post('/api/chat', async (req, res) => {
             maxOutputTokens: config.maxOutputTokens ?? 4096,
         };
 
-        const { rawText: text } = await vertexGenerate({ model, contents, generationConfig });
+        const { rawText: text } = await generateOutline({ model, contents, generationConfig });
 
         res.json({ text });
 
@@ -230,7 +284,7 @@ The JSON format MUST be:
 
         };
 
-        const { rawText } = await vertexGenerate({ model, contents, systemInstruction, generationConfig });
+        const { rawText } = await generateOutline({ model, contents, systemInstruction, generationConfig });
 
         // --- JSON Parsing ---
 
@@ -678,5 +732,6 @@ app.post('/api/generate-debug-test', async (req, res) => {
 // --- Server Start ---
 app.listen(port, () => {
     console.log(`Backend server running at http://localhost:${port}`);
-    console.log('Using Application Default Credentials. Make sure gcloud is authenticated.');
+    console.log('Meta Model API via', META_API_BASE);
+    console.log('Set MODEL_API_KEY in backend/.env to enable generation.');
 });

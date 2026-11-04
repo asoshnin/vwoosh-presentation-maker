@@ -1,23 +1,19 @@
-// Sprint 02 (P0-5) T3 — chat passthrough (vitest).
+// Sprint 02 (P0-5) T3 — chat passthrough (vitest), Meta path (Sprint 08).
 //
-// POST /api/chat with history + message (Vertex mocked at the fetch
-// boundary): asserts history->contents mapping (roles/order preserved, current
+// POST /api/chat with history + message (Meta mocked at the fetch
+// boundary): asserts history->messages mapping (roles/order preserved, current
 // message appended as final user turn) and the {text} return contract.
 import { setupServer } from 'msw/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   captured,
-  ensureFakeAdc,
-  oauthHandler,
-  vertexTextHandler,
-} from './helpers/vertex-mock';
+  metaTextHandler,
+} from './helpers/meta-mock';
 import { BACKEND_BASE, pollHealth } from './helpers/services';
-
-ensureFakeAdc();
 
 const MODEL_REPLY = 'Hello from the mocked model';
 
-const server = setupServer(oauthHandler, vertexTextHandler(MODEL_REPLY));
+const server = setupServer(metaTextHandler(MODEL_REPLY));
 
 beforeAll(async () => {
   server.listen({ onUnhandledRequest: 'bypass' });
@@ -41,7 +37,7 @@ describe('T3 — Node /api/chat', () => {
     const res = await fetch(`${BACKEND_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gemini-2.0-flash', message, history, config: {} }),
+      body: JSON.stringify({ model: 'muse-spark-1.3-contributor', message, history, config: {} }),
     });
 
     expect(res.status).toBe(200);
@@ -49,19 +45,19 @@ describe('T3 — Node /api/chat', () => {
     expect(Object.keys(body)).toEqual(['text']);
     expect(body.text).toBe(MODEL_REPLY);
 
-    expect(captured.vertexBody.contents).toEqual([
-      { role: 'user', parts: [{ text: 'Hi, I need a deck' }] },
-      { role: 'model', parts: [{ text: 'Hello! What is it about?' }] },
-      { role: 'user', parts: [{ text: message }] },
+    expect(captured.metaBody.messages).toEqual([
+      { role: 'user', content: 'Hi, I need a deck' },
+      { role: 'assistant', content: 'Hello! What is it about?' },
+      { role: 'user', content: message },
     ]);
   });
 
-  it('forwards explicit temperature:0 as 0 (P1-4, ?? not ||)', async () => {
+  it('forwards explicit temperature:0 as 0 (P1-4 Meta path, ?? not ||)', async () => {
     const res = await fetch(`${BACKEND_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gemini-2.0-flash',
+        model: 'muse-spark-1.3-contributor',
         message: 'deterministic please',
         history: [],
         config: { temperature: 0 },
@@ -69,6 +65,6 @@ describe('T3 — Node /api/chat', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(captured.vertexBody.generationConfig.temperature).toBe(0);
+    expect(captured.metaBody.temperature).toBe(0);
   });
 });

@@ -1,10 +1,9 @@
 const API_BASE = '/api';
 
 export const AVAILABLE_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-pro',
-  'gemini-2.5-flash-lite-preview-09-2025',
-  'gemini-2.5-flash-preview-09-2025'
+  'muse-spark-1.3-contributor',
+  'muse-spark-1.3',
+  'muse-wonder-1.0',
 ];
 
 const DEFAULT_MODEL = AVAILABLE_MODELS[0];
@@ -41,7 +40,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function chatWithGemini(message: string, options: ChatOptions = {}): Promise<ChatResponse> {
+export async function chatWithMeta(message: string, options: ChatOptions = {}): Promise<ChatResponse> {
   const {
     model = DEFAULT_MODEL,
     history = [],
@@ -62,6 +61,6 @@ export async function chatWithGemini(message: string, options: ChatOptions = {})
 }
 
 export async function testConnection(): Promise<string> {
-  const result = await chatWithGemini('Hello, this is a test.');
+  const result = await chatWithMeta('Hello, this is a test.');
   return result.text;
 }

@@ -69,8 +69,8 @@ python-service/  FastAPI — Z-order correction via _spTree manipulation (condit
 
 | Variable | Required | Description |
 |---|---|---|
-| `MODEL_API_KEY` | yes | Meta Model API key from `https://dev.meta.ai` |
-| `VITE_GOOGLE_CLOUD_PROJECT` | only if `USE_VERTEX_FALLBACK=1` | Vertex AI project (fallback, not primary) |
+| `MODEL_API_KEY` | yes | Meta Model API key (`LLM_…`) from `https://dev.meta.ai` — or set it in Settings (stored server-side, `0600`) |
+| `META_API_BASE` | no | Override, default `https://api.meta.ai/v1` |
 
 ## Provenance
 

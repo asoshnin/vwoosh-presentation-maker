@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 
-import { chatWithGemini } from '../services/gemini';
+import { AVAILABLE_MODELS, chatWithMeta } from '../services/meta';
 
 
 
@@ -37,7 +37,7 @@ interface PresentationOutline {
 
 // --- Constants ---
 
-const MODEL_NAME = 'gemini-2.5-flash'; // Use the model from our backend service
+const MODEL_NAME = AVAILABLE_MODELS[0]; // Meta model served by the backend
 
 const GREETING_MESSAGE: Message = {
 
@@ -158,9 +158,9 @@ export function ChatInterface() {
 
     try {
 
-      // Use the chatWithGemini function from our service
+      // Use the chatWithMeta function from our service
 
-      const response = await chatWithGemini(currentInput.trim(), {
+      const response = await chatWithMeta(currentInput.trim(), {
 
         model: MODEL_NAME,
 

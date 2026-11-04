@@ -1,23 +1,18 @@
-// Sprint 02 (P0-5) T2 — outline + python error contracts (vitest).
+// Sprint 02 (P0-5) T2 — outline + python error contracts (vitest), Meta path (Sprint 08).
 //
-// T2a (Node POST /api/generate-outline, Vertex mocked at the fetch boundary):
-//   - happy: Vertex returns a JSON string -> 200 {title, slides:[{title,content}]}
-//   - malformed: Vertex returns prose -> now 422 {error: Invalid outline ...}. P1-7 fix.
-//     Correct-by-accident until P1-7 lands schema validation (-> 422); the
-//     Sprint 04 fix is the red->green flip, so this pins today's behaviour.
+// T2a (Node POST /api/generate-outline, Meta mocked at the fetch boundary):
+//   - happy: Meta returns a JSON string -> 200 {title, slides:[{title,content}]}
+//   - malformed: Meta returns prose -> 422 {error: Invalid outline ...}. P1-7 fix.
 // T2b (python-service POST /api/process-pptx, hit directly): missing-file
 //   error path returns 422 (P0-4 fix) and must never regress to 200.
 import { setupServer } from 'msw/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   captured,
-  ensureFakeAdc,
-  oauthHandler,
-  vertexTextHandler,
-} from './helpers/vertex-mock';
+  metaTextHandler,
+  resetCapture,
+} from './helpers/meta-mock';
 import { BACKEND_BASE, PYTHON_BASE, ensurePythonService, pollHealth } from './helpers/services';
-
-ensureFakeAdc();
 
 const HAPPY_OUTLINE = {
   title: ' contracted outline ',
@@ -26,9 +21,9 @@ const HAPPY_OUTLINE = {
     { title: 'Slide 2: Outro', content: 'Summary\nCTA' },
   ],
 };
-const MALFORMED_VERTEX_TEXT = "Here's your outline:\n1. Intro stuff\n2. Outro stuff";
+const MALFORMED_META_TEXT = "Here's your outline:\n1. Intro stuff\n2. Outro stuff";
 
-const server = setupServer(oauthHandler, vertexTextHandler(JSON.stringify(HAPPY_OUTLINE)));
+const server = setupServer(metaTextHandler(JSON.stringify(HAPPY_OUTLINE)));
 
 beforeAll(async () => {
   server.listen({ onUnhandledRequest: 'bypass' });
@@ -53,7 +48,7 @@ async function postOutline(body: unknown): Promise<{ status: number; json: any }
 describe('T2a — Node /api/generate-outline', () => {
   it('happy path returns 200 {title, slides:[{title,content}]}', async () => {
     const { status, json } = await postOutline({
-      model: 'gemini-2.0-flash',
+      model: 'muse-spark-1.3-contributor',
       history: [{ role: 'user', content: 'A deck about testing' }],
     });
     expect(status).toBe(200);
@@ -64,15 +59,16 @@ describe('T2a — Node /api/generate-outline', () => {
       expect(typeof slide.title).toBe('string');
       expect(typeof slide.content).toBe('string');
     }
-    // The outline prompt is appended after the client history.
-    expect(captured.vertexBody.contents.at(-1).role).toBe('user');
+    // The outline prompt is sent as the first system message (P1-5 Meta path).
+    expect(captured.metaBody.messages[0].role).toBe('system');
+    expect(captured.metaBody.messages[0].content).toContain('You are an expert presentation outliner');
   });
 
-  it('malformed Vertex text now returns 422 {error} (P1-7 flip — was 500, now 422 with envelope)', async () => {
-    server.use(vertexTextHandler(MALFORMED_VERTEX_TEXT));
+  it('malformed Meta text returns 422 {error} (P1-7 — Meta path, unchanged envelope)', async () => {
+    server.use(metaTextHandler(MALFORMED_META_TEXT));
     try {
       const { status, json } = await postOutline({
-        model: 'gemini-2.0-flash',
+        model: 'muse-spark-1.3-contributor',
         history: [{ role: 'user', content: 'A deck about testing' }],
       });
       expect(status).toBe(422);
@@ -83,30 +79,32 @@ describe('T2a — Node /api/generate-outline', () => {
     }
   });
 
-  it('sends outline prompt as systemInstruction, not a trailing user turn (P1-5)', async () => {
+  it('sends outline prompt as system message, not a trailing user turn (P1-5 Meta path)', async () => {
     const { status } = await postOutline({
-      model: 'gemini-2.0-flash',
+      model: 'muse-spark-1.3-contributor',
       history: [{ role: 'user', content: 'A deck about testing' }],
     });
     expect(status).toBe(200);
-    expect(captured.vertexBody.systemInstruction).toBeDefined();
-    expect(captured.vertexBody.systemInstruction.parts[0].text).toContain(
+    expect(captured.metaBody.messages[0].role).toBe('system');
+    expect(captured.metaBody.messages[0].content).toContain(
       'You are an expert presentation outliner',
     );
-    const texts = captured.vertexBody.contents.map((c: any) => c.parts?.[0]?.text ?? '');
-    expect(texts.some((t: string) => t.includes('You are an expert presentation outliner'))).toBe(
+    const userTexts = captured.metaBody.messages
+      .filter((m: any) => m.role === 'user')
+      .map((m: any) => m.content ?? '');
+    expect(userTexts.some((t: string) => t.includes('You are an expert presentation outliner'))).toBe(
       false,
     );
   });
 
-  it('omits topP from outline generationConfig (P1-6)', async () => {
+  it('omits topP from outline generation body (P1-6 Meta path)', async () => {
     const { status } = await postOutline({
-      model: 'gemini-2.0-flash',
+      model: 'muse-spark-1.3-contributor',
       history: [{ role: 'user', content: 'A deck about testing' }],
     });
     expect(status).toBe(200);
-    expect(captured.vertexBody.generationConfig.temperature).toBe(0);
-    expect(captured.vertexBody.generationConfig).not.toHaveProperty('topP');
+    expect(captured.metaBody.temperature).toBe(0);
+    expect(captured.metaBody).not.toHaveProperty('topP');
   });
 });
 
