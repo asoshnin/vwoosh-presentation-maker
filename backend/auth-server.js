@@ -145,8 +145,6 @@ app.post('/api/generate-outline', async (req, res) => {
 
     const { model, history } = req.body;
 
-
-
     // --- Define the Outline Generation System Prompt ---
 
     // This prompt forces the AI to output *only* JSON.
@@ -159,19 +157,13 @@ You will be given a conversation history (a "Strategy Discussion") between a use
 
 Your *only* job is to analyze this history and generate a structured presentation outline in JSON format.
 
-
-
 The user's goal, audience, and core message are in the history.
 
 Base the outline on these extracted needs.
 
-
-
 You MUST return ONLY a valid JSON object, and nothing else.
 
 Do not add "\`\`\`json" or any conversational text.
-
-
 
 The JSON format MUST be:
 
@@ -215,8 +207,6 @@ The JSON format MUST be:
 
     // --- End of System Prompt ---
 
-
-
     try {
 
         // Format the history from the client
@@ -229,11 +219,7 @@ The JSON format MUST be:
 
         }));
 
-
-
         const systemInstruction = { parts: [{ text: OUTLINE_SYSTEM_PROMPT }] };
-
-
 
         const generationConfig = {
 
@@ -243,19 +229,13 @@ The JSON format MUST be:
 
         };
 
-
-
         const { rawText } = await vertexGenerate({ model, contents, systemInstruction, generationConfig });
-
-
 
         // --- JSON Parsing ---
 
         // The AI might still include markdown ticks. We must clean them.
 
         const cleanedText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-
 
         try {
 
@@ -278,8 +258,6 @@ The JSON format MUST be:
             return res.status(422).json({ error: 'Invalid outline JSON', details: parseError.message });
 
         }
-
-
 
     } catch (error) {
 
@@ -305,8 +283,6 @@ app.post('/api/generate-presentation', async (req, res) => {
 
     const { outline, brandKit } = req.body;
 
-
-
     console.log('--- FINAL MVP GENERATION REQUEST (IN-MEMORY) ---');
 
     console.log('Outline Title:', outline.title);
@@ -315,23 +291,17 @@ app.post('/api/generate-presentation', async (req, res) => {
 
     console.log('------------------------------------------------');
 
-
-
     try {
 
         // --- 2. DYNAMICALLY CREATE BRANDED PRESENTATION ---
 
         let pres = new PptxGenJS();
 
-
-
         const userColor = brandKit.color.replace('#', '') || '0072C6';
 
         const titleColor = userColor;
 
         const footerTextColor = '808080';
-
-
 
         // --- Define Master Slide (simplified) ---
 
@@ -361,13 +331,9 @@ app.post('/api/generate-presentation', async (req, res) => {
 
         });
 
-
-
         // --- 3. LOOP THROUGH OUTLINE AND CREATE SLIDES ---
 
         console.log('Generating slides from outline...');
-
-
 
         for (const slideData of outline.slides) {
 
@@ -397,8 +363,6 @@ app.post('/api/generate-presentation', async (req, res) => {
 
             });
 
-
-
             // Add content as bullets - use text objects to avoid string mutation issues
 
             const contentText = `${slideData.content || ''}`;
@@ -410,8 +374,6 @@ app.post('/api/generate-presentation', async (req, res) => {
                 .filter(pt => pt.length > 0)
 
                 .map(pt => ({ text: pt })); // Convert to text objects
-
-            
 
             if (contentPoints.length > 0) {
 
@@ -435,8 +397,6 @@ app.post('/api/generate-presentation', async (req, res) => {
 
             }
 
-
-
             if (brandKit.logo) {
 
                 slide.addImage({
@@ -453,8 +413,6 @@ app.post('/api/generate-presentation', async (req, res) => {
 
         console.log(`Successfully added ${outline.slides.length} slides.`);
 
-
-
         // --- 4. GENERATE FILE IN MEMORY AS A BUFFER ---
 
         // This is the correct server-side method.
@@ -465,8 +423,6 @@ app.post('/api/generate-presentation', async (req, res) => {
 
         console.log('Buffer created successfully.');
 
-
-
         // --- 5. SEND BUFFER TO USER ---
 
         // We must manually set the headers that res.download() did for us.
@@ -476,8 +432,6 @@ app.post('/api/generate-presentation', async (req, res) => {
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
 
         res.send(pptxBuffer);
-
-
 
     } catch (err) {
 
@@ -726,15 +680,11 @@ app.post('/api/generate-test', async (req, res) => {
 
     console.log('Received request for /api/generate-test...');
 
-
-
     // === STAGE 1: Generation (Node.js / PptxGenJS) ===
 
     console.log('Stage 1: Defining Master Slide and generating test PPTX...');
 
     let pres = new PptxGenJS();
-
-
 
     // --- NEW: MASTER SLIDE DEFINITION ---
 
@@ -747,8 +697,6 @@ app.post('/api/generate-test', async (req, res) => {
         title: 'MASTER_LAYOUT',
 
         background: { color: 'F5F5F5' }, // Light gray background
-
-
 
         // Define standard placeholder objects
 
@@ -816,19 +764,13 @@ app.post('/api/generate-test', async (req, res) => {
 
     // --- END OF MASTER SLIDE DEFINITION ---
 
-
-
     // Create a new slide *using* our master layout
 
     let slide = pres.addSlide({ masterName: 'MASTER_LAYOUT' });
 
-
-
     // Use the 'title' placeholder we defined in the master
 
     slide.addText('Master Slide Test', { placeholder: 'title' });
-
-
 
     // --- NEW: SVG LOGO IMPORT ---
 
@@ -844,8 +786,6 @@ app.post('/api/generate-test', async (req, res) => {
 
         const svgDataUri = `data:image/svg+xml;base64,${base64Data}`;
 
-
-
         // Add the SVG logo to the slide (positioned in top-right corner)
 
         slide.addImage({
@@ -856,11 +796,7 @@ app.post('/api/generate-test', async (req, res) => {
 
         });
 
-
-
         console.log('Successfully added SVG logo to slide');
-
-
 
     } catch (error) {
 
@@ -872,13 +808,9 @@ app.post('/api/generate-test', async (req, res) => {
 
     // --- END OF SVG LOGO IMPORT ---
 
-
-
     // Add our Z-Order test shapes (still needed for Stage 2)
 
     // We add them over the 'body' placeholder area
-
-
 
     // Blue Rectangle (Bottom)
 
@@ -910,11 +842,7 @@ app.post('/api/generate-test', async (req, res) => {
 
     });
 
-
-
     const tempFilePath = path.join(__dirname, 'stage1_output.pptx');
-
-
 
     try {
 
@@ -924,21 +852,15 @@ app.post('/api/generate-test', async (req, res) => {
 
         console.log(`Stage 1: Successfully saved temp file to ${tempFilePath}`);
 
-
-
         // === STAGE 1-to-2 Handover: Send to Python Service ===
 
         console.log('Stage 1-to-2 Handover: Sending file to Python service...');
 
         const pythonServiceUrl = 'http://127.0.0.1:8000/api/process-pptx';
 
-
-
         const form = new FormData();
 
         form.append('pptx_file', fs.createReadStream(tempFilePath), 'stage1_output.pptx');
-
-
 
         const responseFromPython = await axios.post(
 
@@ -950,11 +872,7 @@ app.post('/api/generate-test', async (req, res) => {
 
         );
 
-
-
         console.log('Stage 2: Response from Python:', responseFromPython.data);
-
-
 
         // Send the success response from Python back to the frontend
 
@@ -965,8 +883,6 @@ app.post('/api/generate-test', async (req, res) => {
             stage2_response: responseFromPython.data
 
         });
-
-
 
     } catch (err) {
 
@@ -995,8 +911,6 @@ app.post('/api/generate-test', async (req, res) => {
             details: errorDetails
 
         });
-
-
 
     } finally {
 
