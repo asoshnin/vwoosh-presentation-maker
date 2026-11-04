@@ -1,0 +1,13 @@
+{
+  "title": "Golden Test Deck",
+  "slides": [
+    {
+      "title": "Slide 1: Golden Title",
+      "content": "First key point\nSecond key point\nThird key point"
+    },
+    {
+      "title": "Slide 2: Golden Conclusion",
+      "content": "Summary of key points\nCall to action"
+    }
+  ]
+}

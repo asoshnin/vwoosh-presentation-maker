@@ -1,0 +1,14 @@
+{
+  "plain": {
+    "color": "#0072C6",
+    "logo": null
+  },
+  "pngLogo": {
+    "color": "#0072C6",
+    "logo": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  },
+  "svgLogo": {
+    "color": "#0072C6",
+    "logo": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHJlY3Qgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiBmaWxsPSIjMDA3MkM2Ii8+PC9zdmc+"
+  }
+}

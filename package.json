@@ -1,0 +1,18 @@
+{
+  "name": "presentationmaker-harness",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Sprint 02 (P0-5) regression harness: vitest HTTP contracts + boot smoke. PPTX structural tests run under pytest (see tests/).",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "msw": "^2.11.2",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
