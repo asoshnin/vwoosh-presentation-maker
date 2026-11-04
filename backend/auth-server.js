@@ -113,9 +113,8 @@ app.post('/api/chat', async (req, res) => {
         ];
 
         const generationConfig = {
-            temperature: config.temperature || 0.7,
-            maxOutputTokens: config.maxOutputTokens || 4096,
-            ...config
+            temperature: config.temperature ?? 0.7,
+            maxOutputTokens: config.maxOutputTokens ?? 4096,
         };
 
         const { rawText: text } = await vertexGenerate({ model, contents, generationConfig });
@@ -225,15 +224,7 @@ The JSON format MUST be:
 
 
 
-        // Add the system prompt *after* the history
-
-        contents.push({
-
-            role: 'user',
-
-            parts: [{ text: OUTLINE_SYSTEM_PROMPT }]
-
-        });
+        const systemInstruction = { parts: [{ text: OUTLINE_SYSTEM_PROMPT }] };
 
 
 
@@ -243,13 +234,11 @@ The JSON format MUST be:
 
             temperature: 0.0,
 
-            topP: 0.0,
-
         };
 
 
 
-        const { rawText } = await vertexGenerate({ model, contents, generationConfig });
+        const { rawText } = await vertexGenerate({ model, contents, systemInstruction, generationConfig });
 
 
 

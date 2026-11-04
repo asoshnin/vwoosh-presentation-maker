@@ -83,6 +83,32 @@ describe('T2a — Node /api/generate-outline', () => {
       server.resetHandlers();
     }
   });
+
+  it('sends outline prompt as systemInstruction, not a trailing user turn (P1-5)', async () => {
+    const { status } = await postOutline({
+      model: 'gemini-2.0-flash',
+      history: [{ role: 'user', content: 'A deck about testing' }],
+    });
+    expect(status).toBe(200);
+    expect(captured.vertexBody.systemInstruction).toBeDefined();
+    expect(captured.vertexBody.systemInstruction.parts[0].text).toContain(
+      'You are an expert presentation outliner',
+    );
+    const texts = captured.vertexBody.contents.map((c: any) => c.parts?.[0]?.text ?? '');
+    expect(texts.some((t: string) => t.includes('You are an expert presentation outliner'))).toBe(
+      false,
+    );
+  });
+
+  it('omits topP from outline generationConfig (P1-6)', async () => {
+    const { status } = await postOutline({
+      model: 'gemini-2.0-flash',
+      history: [{ role: 'user', content: 'A deck about testing' }],
+    });
+    expect(status).toBe(200);
+    expect(captured.vertexBody.generationConfig.temperature).toBe(0);
+    expect(captured.vertexBody.generationConfig).not.toHaveProperty('topP');
+  });
 });
 
 describe('T2b — python-service /api/process-pptx error path', () => {

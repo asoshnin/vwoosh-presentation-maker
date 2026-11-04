@@ -55,4 +55,20 @@ describe('T3 — Node /api/chat', () => {
       { role: 'user', parts: [{ text: message }] },
     ]);
   });
+
+  it('forwards explicit temperature:0 as 0 (P1-4, ?? not ||)', async () => {
+    const res = await fetch(`${BACKEND_BASE}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gemini-2.0-flash',
+        message: 'deterministic please',
+        history: [],
+        config: { temperature: 0 },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(captured.vertexBody.generationConfig.temperature).toBe(0);
+  });
 });
