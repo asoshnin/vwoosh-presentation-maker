@@ -86,7 +86,7 @@ async def process_pptx(pptx_file: UploadFile = File(...)):
 
 
 
-        # === 2. Z-ORDER CORRECTION LOGIC (SPRINT 2) ===
+        # === 2. Z-ORDER CORRECTION LOGIC ===
 
         print("Starting Z-order correction...")
 

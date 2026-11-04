@@ -22,7 +22,10 @@ python-service/temp/
 # --- Environment (keep the example template) ---
 .env
 .env.*
+.envrc
+*.env
 !.env.example
+!.env.*.example
 
 # --- IDE ---
 .vscode/
