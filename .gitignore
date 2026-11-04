@@ -62,3 +62,6 @@ _INTERNAL/
 *.bundle
 *.bak
 *.zip
+
+# Agent notes
+memory/
