@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import { VertexAI } from '@google-cloud/vertexai';
 import { GoogleAuth } from 'google-auth-library';
 import PptxGenJS from 'pptxgenjs'; // Import pptxgenjs
 import axios from 'axios'; // Import axios
@@ -30,8 +29,6 @@ const googleAuth = new GoogleAuth({
 });
 
 console.log('Vertex AI Config:', { project, location });
-
-const vertexAI = new VertexAI({ project, location });
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' })); // Increase limit for Base64 logo uploads
@@ -68,13 +65,44 @@ async function getAccessToken() {
     }
 }
 
+/**
+ * Calls Vertex AI generateContent. Pure move of the two duplicated blocks;
+ * preserves current bugs (P1-4/5/6) so Sprint 04 can fix them in one place.
+ *
+ * @param {object} args
+ * @param {string} args.model
+ * @param {Array<{role:string, parts:[{text:string}]}>} args.contents
+ * @param {{parts:[{text:string}]}} [args.systemInstruction]
+ * @param {object} [args.generationConfig]
+ * @returns {Promise<{rawText:string, candidates:any[], json:any}>}
+ */
+async function vertexGenerate({ model, contents, systemInstruction, generationConfig }) {
+    const token = await getAccessToken();
+    const body = { contents, ...(systemInstruction && { systemInstruction }), ...(generationConfig && { generationConfig }) };
+    const url = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body)
+    });
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Vertex AI API error: ${response.status} - ${errorBody}`);
+    }
+    const result = await response.json();
+    const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return { rawText, candidates: result.candidates ?? [], json: result };
+}
+
 // === API Endpoints ===
 
 // 1. Vertex AI Chat Endpoint (Existing)
 app.post('/api/chat', async (req, res) => {
     try {
         const { model, message, history = [], config = {} } = req.body;
-        const token = await getAccessToken();
 
         const contents = [
             ...history.map(msg => ({
@@ -84,33 +112,13 @@ app.post('/api/chat', async (req, res) => {
             { role: 'user', parts: [{ text: message }] }
         ];
 
-        const requestBody = {
-            contents,
-            generationConfig: {
-                temperature: config.temperature || 0.7,
-                maxOutputTokens: config.maxOutputTokens || 4096,
-                ...config
-            }
+        const generationConfig = {
+            temperature: config.temperature || 0.7,
+            maxOutputTokens: config.maxOutputTokens || 4096,
+            ...config
         };
 
-        const url = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody)
-        });
-
-        if (!response.ok) {
-            const errorBody = await response.text();
-            throw new Error(`Vertex AI API error: ${response.status} - ${errorBody}`);
-        }
-
-        const result = await response.json();
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const { rawText: text } = await vertexGenerate({ model, contents, generationConfig });
 
         res.json({ text });
 
@@ -205,10 +213,6 @@ The JSON format MUST be:
 
     try {
 
-        const token = await getAccessToken(); // Reuse our existing auth
-
-
-
         // Format the history from the client
 
         const contents = history.map(msg => ({
@@ -233,59 +237,19 @@ The JSON format MUST be:
 
 
 
-        const requestBody = {
+        const generationConfig = {
 
-            contents,
+            // We want JSON, so we make the AI deterministic
 
-            generationConfig: {
+            temperature: 0.0,
 
-                // We want JSON, so we make the AI deterministic
-
-                temperature: 0.0,
-
-                topP: 0.0,
-
-            }
+            topP: 0.0,
 
         };
 
 
 
-        const url = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
-
-
-
-        const response = await fetch(url, {
-
-            method: 'POST',
-
-            headers: {
-
-                'Authorization': `Bearer ${token}`,
-
-                'Content-Type': 'application/json',
-
-            },
-
-            body: JSON.stringify(requestBody)
-
-        });
-
-
-
-        if (!response.ok) {
-
-            const errorBody = await response.text();
-
-            throw new Error(`Vertex AI API error: ${response.status} - ${errorBody}`);
-
-        }
-
-
-
-        const result = await response.json();
-
-        const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const { rawText } = await vertexGenerate({ model, contents, generationConfig });
 
 
 
