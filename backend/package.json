@@ -12,5 +12,8 @@
   },
   "scripts": {
     "start": "node auth-server.js"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

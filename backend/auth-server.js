@@ -36,6 +36,8 @@ const vertexAI = new VertexAI({ project, location });
 app.use(cors());
 app.use(express.json({ limit: '10mb' })); // Increase limit for Base64 logo uploads
 
+app.get('/healthz', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+
 // --- Helper Function for Auth ---
 let accessToken = null;
 let tokenExpires = 0;

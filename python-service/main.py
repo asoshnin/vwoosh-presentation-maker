@@ -1,10 +1,11 @@
+import os
 import uvicorn
 
 import shutil
 
 from pathlib import Path
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 
 from fastapi.responses import FileResponse # Import FileResponse
 
@@ -47,6 +48,11 @@ print(f"Python service running. Temp directory is at: {TEMP_DIR.resolve()}")
 def read_root():
 
     return {"status": "Stage 2 Post-Processing Engine is running."}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 
@@ -190,7 +196,7 @@ async def get_processed_file(filename: str):
 
         print("File not found.")
 
-        return {"error": "File not found"}, 404
+        raise HTTPException(status_code=404, detail="File not found")
 
     
 
@@ -212,4 +218,4 @@ async def get_processed_file(filename: str):
 
 if __name__ == "__main__":
 
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=os.getenv("DEV") == "1")
