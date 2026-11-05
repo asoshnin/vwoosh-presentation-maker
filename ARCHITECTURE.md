@@ -132,6 +132,17 @@ Single-operator store (`backend/.meta-key.json`, `0600`, gitignored): `PUT` acce
   files, shows thumbnails with click-to-copy IDs for chat reference. Dialogue stays textual.
 * **Tests:** `node --test backend/tests/test_sprint09.mjs` — 12 tests, zero dependencies.
 
+## 4c. Demo renderer parity (Sprint 10)
+
+The inline master-slide loop in `/api/generate-presentation` is replaced by a deterministic renderer in `backend/presentation/`:
+
+* **`theme.js`** — slide 13.333×7.5; background `0B0F17`, surface `141B28`, accent `00FF88`, body `FFFFFF`, muted `999999`; Calibri body, Courier New appendix.
+* **`normalize.js`** (pure, unit-tested) — strips `Slide N:` prefixes; parses bullets from arrays/newlines/`•`/`-`/semicolons (never splits ordinary commas); splits card heading/body on `—`/`:`; selects layout; computes title/body font sizes and aspect-preserving `containRect` for logos.
+* **`renderDeck.js`** — layouts: `hero` (optional full-bleed assigned image), `cards` (3 structured points + supporting lines), `standard`, `chart` (native editable column chart from `metrics`, white tick labels, accent highlight), `cta` (full-bleed finale image + dark readability panel), `appendix` (Courier New, bold P.S.). No `Company Confidential` footer; optional source line + slide number.
+* **Assets:** payload `assetAssignments {hero, cta, slides:{n:id}}` resolves Sprint 09 session assets server-side; a missing assigned asset returns **422 naming the ID** before rendering — never a silent substitution. Full-bleed images are crop-to-fill; logos are aspect-preserved (`contain`) and verified by embedded-media SHA‑256 in tests.
+* **Outline hardening:** the outline system prompt no longer teaches `Slide N:` titles; it requires exact user titles, newline-separated bullets, and documents optional `layout`/`source`/`metrics` fields while remaining JSON-only.
+* **Tests:** `test_normalize.mjs` (27) ships here; the renderer integration suite (16 tests: slide size, dark background, chart part, logo hash, no title/logo overlap) runs in the dev repo with installed deps + fixtures. Combined with Sprint 09: **55/55 green**, plus a live end-to-end fixture generation (HTTP 200, hero/CTA backgrounds and corner logo verified by hash).
+
 ## 5. Configuration
 
 | Variable | Required | Where |

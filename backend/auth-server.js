@@ -1,11 +1,14 @@
 import express from 'express';
 import cors from 'cors';
-import PptxGenJS from 'pptxgenjs'; // Import pptxgenjs
+import crypto from 'crypto';
+import PptxGenJS from 'pptxgenjs'; // Import pptxgenjs (debug route)
 import fs from 'fs'; // Import File System module
 import path from 'path'; // Import Path module
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { assetRouter } from './assetstore/routes.js'; // Sprint 09 additive
+import { assetPath, sanitizeSession } from './assetstore/store.js'; // Sprint 09 session lookup (Sprint 10 reuse)
+import { renderPresentation } from './presentation/renderDeck.js'; // Sprint 10 renderer
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -206,59 +209,38 @@ app.post('/api/generate-outline', async (req, res) => {
     // This prompt forces the AI to output *only* JSON.
 
     const OUTLINE_SYSTEM_PROMPT = `
-
 You are an expert presentation outliner.
-
 You will be given a conversation history (a "Strategy Discussion") between a user and an AI.
-
 Your *only* job is to analyze this history and generate a structured presentation outline in JSON format.
-
 The user's goal, audience, and core message are in the history.
-
 Base the outline on these extracted needs.
-
 You MUST return ONLY a valid JSON object, and nothing else.
-
 Do not add "\`\`\`json" or any conversational text.
-
+Rules:
+- Use the user's slide titles EXACTLY as given. Never add, invent, or renumber titles, and never prefix a title with slide numbering of any kind.
+- Put every content point on its own line. Each line MUST start with "- " (hyphen + space): one bullet per line.
+- Optional per-slide fields (include only when the history supports them):
+  - "layout": one of "hero", "cards", "standard", "chart", "cta", "appendix".
+  - "source": short source or attribution line for the slide footer.
+  - "metrics": array of {"label": string, "value": number} for a native chart. Only use real numbers from the history; never invent data.
+  - "image_role": one of "hero", "cta". A hint for background imagery; the renderer may ignore it.
 The JSON format MUST be:
-
 {
-
   "title": "A compelling title for the presentation",
-
   "slides": [
-
     {
-
-      "title": "Slide 1: Title Slide",
-
-      "content": "A brief description of the title slide content (e.g., 'Title, Subtitle, Author')."
-
+      "title": "<exact user title, unchanged>",
+      "content": "- First point\\n- Second point"
     },
-
     {
-
-      "title": "Slide 2: Introduction",
-
-      "content": "A bullet list of key points for the introduction. (e.g., 'Hook, The Problem, Our Solution')."
-
-    },
-
-    // ... generate as many slides as needed ...
-
-    {
-
-      "title": "Slide N: Conclusion",
-
-      "content": "A bullet list for the conclusion. (e.g., 'Summary of Key Points, Call to Action')."
-
+      "title": "<exact user title, unchanged>",
+      "content": "- Point one\\n- Point two",
+      "layout": "cards",
+      "source": "Optional source line",
+      "metrics": [{"label": "Example", "value": 3}]
     }
-
   ]
-
 }
-
 `;
 
     // --- End of System Prompt ---
@@ -331,170 +313,108 @@ The JSON format MUST be:
 
 });
 
-// 3. Final MVP Presentation Generation Endpoint
+// 3. Presentation Generation Endpoint (Sprint 10: HTTP adapter over presentation/renderDeck.js)
 
 app.post('/api/generate-presentation', async (req, res) => {
 
     // --- 1. RECEIVE THE FULL PAYLOAD ---
 
-    const { outline, brandKit } = req.body;
+    const { outline, brandKit: rawBrandKit, assetAssignments, sessionId: bodySessionId } = req.body || {};
 
-    console.log('--- FINAL MVP GENERATION REQUEST (IN-MEMORY) ---');
+    // Missing outline/slides -> 400 JSON.
+    if (!outline || !Array.isArray(outline.slides) || outline.slides.length === 0) {
+        return res.status(400).json({ error: 'Missing outline', details: 'expected {outline: {title, slides: [{title, content}]}} with at least one slide' });
+    }
 
+    // --- 2. BRAND KIT DEFAULTS (tolerate missing brandKit/color) ---
+    const brandKit = { ...(rawBrandKit ?? {}) };
+    const colorHex = typeof brandKit.color === 'string' ? brandKit.color.trim().replace(/^#/, '') : '';
+    if (!colorHex) {
+        brandKit.color = '#00FF88';
+    } else if (/^0072C6$/i.test(colorHex) && !brandKit.themePreset) {
+        // Legacy/default blue -> demo accent ONLY when no themePreset chose it explicitly.
+        brandKit.color = '#00FF88';
+    }
+
+    // --- 3. SESSION RESOLUTION (Sprint 09 store; prefer X-Session-Id header) ---
+    let sessionId;
+    try {
+        sessionId = sanitizeSession(req.get('X-Session-Id') || bodySessionId || 'anon');
+    } catch {
+        return res.status(400).json({ error: 'Invalid session', details: 'invalid X-Session-Id header or sessionId body field' });
+    }
+
+    console.log('--- SPRINT 10 GENERATION REQUEST (IN-MEMORY) ---');
     console.log('Outline Title:', outline.title);
-
     console.log('Total Slides:', outline.slides.length);
+    console.log('Session:', sessionId);
 
-    console.log('------------------------------------------------');
+    // IDs/filename/sha-prefix only in logs below — never base64.
+    if (brandKit.logo) {
+        const logoSha = crypto.createHash('sha256').update(String(brandKit.logo)).digest('hex');
+        console.log(`Logo: file=${brandKit.logoMeta?.name || '(inline)'} type=${brandKit.logoMeta?.type || 'unknown'} sha=${logoSha.slice(0, 12)}`);
+    }
+
+    // --- 4. RESOLVE ASSIGNED SESSION ASSETS (422 naming the asset ID, before rendering) ---
+    const assignments = assetAssignments ?? {};
+    const assetsByRole = {};
+    const assetsBySlide = {};
+    const readAssignment = (assetId, role) => {
+        const p = assetPath(__dirname, sessionId, assetId);
+        if (!p) {
+            res.status(422).json({ error: 'Missing asset', assetId, role, details: `asset ${assetId} (role ${role}) not found in session ${sessionId}` });
+            return null;
+        }
+        const bytes = fs.readFileSync(p);
+        const sha = crypto.createHash('sha256').update(bytes).digest('hex');
+        console.log(`Asset ${role}: id=${assetId} file=${path.basename(p)} sha=${sha.slice(0, 12)} bytes=${bytes.length}`);
+        return bytes;
+    };
 
     try {
-
-        // --- 2. DYNAMICALLY CREATE BRANDED PRESENTATION ---
-
-        let pres = new PptxGenJS();
-
-        const userColor = brandKit.color.replace('#', '') || '0072C6';
-
-        const titleColor = userColor;
-
-        const footerTextColor = '808080';
-
-        // --- Define Master Slide (simplified) ---
-
-        pres.defineSlideMaster({
-
-            title: 'MASTER_LAYOUT',
-
-            background: { color: 'F5F5F5' },
-
-            objects: [
-
-                {
-
-                    text: {
-
-                        text: 'Company Confidential',
-
-                        options: { x: 0.5, y: 7.0, w: 4.0, h: 0.25, fontSize: 10, color: footerTextColor }
-
-                    }
-
-                }
-
-            ],
-
-            slideNumber: { x: 9.0, y: 7.0, w: 0.5, h: 0.25, color: footerTextColor, fontSize: 10 }
-
-        });
-
-        // --- 3. LOOP THROUGH OUTLINE AND CREATE SLIDES ---
-
-        console.log('Generating slides from outline...');
-
-        for (const slideData of outline.slides) {
-
-            let slide = pres.addSlide({ masterName: 'MASTER_LAYOUT' });
-
-            // Add title - create a fresh primitive string using template literal
-
-            const titleText = `${slideData.title || ''}`;
-
-            slide.addText(titleText, {
-
-                x: 0.5,
-
-                y: 0.25,
-
-                w: 9.0,
-
-                h: 1.0,
-
-                fontSize: 32,
-
-                color: titleColor,
-
-                bold: true,
-
-                align: 'center'
-
-            });
-
-            // Add content as bullets - use text objects to avoid string mutation issues
-
-            const contentText = `${slideData.content || ''}`;
-
-            const contentPoints = contentText.split('\n')
-
-                .map(pt => pt.trim())
-
-                .filter(pt => pt.length > 0)
-
-                .map(pt => ({ text: pt })); // Convert to text objects
-
-            if (contentPoints.length > 0) {
-
-                slide.addText(contentPoints, {
-
-                    x: 0.5,
-
-                    y: 1.5,
-
-                    w: 9.0,
-
-                    h: 5.5,
-
-                    fontSize: 18,
-
-                    bullet: true,
-
-                    align: 'left'
-
-                });
-
-            }
-
-            if (brandKit.logo) {
-
-                slide.addImage({
-
-                    data: brandKit.logo,
-
-                    x: 9.0, y: 0.25, w: 0.75, h: 0.75
-
-                });
-
-            }
-
+        if (typeof assignments.hero === 'string' && assignments.hero) {
+            const bytes = readAssignment(assignments.hero, 'hero');
+            if (!bytes) return;
+            assetsByRole.hero = bytes;
         }
+        if (typeof assignments.cta === 'string' && assignments.cta) {
+            const bytes = readAssignment(assignments.cta, 'cta');
+            if (!bytes) return;
+            assetsByRole.cta = bytes;
+        }
+        const slidesMap = assignments.slides;
+        if (slidesMap && typeof slidesMap === 'object') {
+            for (const [key, assetId] of Object.entries(slidesMap)) {
+                if (typeof assetId !== 'string' || !assetId) continue;
+                const bytes = readAssignment(assetId, `slides.${key}`);
+                if (!bytes) return;
+                assetsBySlide[key] = bytes;
+            }
+        }
+    } catch (err) {
+        console.error('Error reading assigned assets:', err.message);
+        return res.status(500).json({ error: 'Failed to read assigned assets.', details: err.message });
+    }
 
-        console.log(`Successfully added ${outline.slides.length} slides.`);
-
-        // --- 4. GENERATE FILE IN MEMORY AS A BUFFER ---
-
-        // This is the correct server-side method.
-
-        console.log('Writing presentation to in-memory buffer...');
-
-        const pptxBuffer = await pres.write('nodebuffer');
-
-        console.log('Buffer created successfully.');
-
-        // --- 5. SEND BUFFER TO USER ---
-
-        // We must manually set the headers that res.download() did for us.
+    // --- 5. RENDER + SEND BUFFER (response contract unchanged) ---
+    try {
+        console.log('Rendering via presentation/renderDeck.js...');
+        const pptxBuffer = await renderPresentation({ outline, brandKit, assetsByRole, assetsBySlide });
+        console.log('Buffer created successfully. Bytes:', pptxBuffer.length);
 
         res.setHeader('Content-Disposition', 'attachment; filename="presentation.pptx"');
-
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-
         res.send(pptxBuffer);
-
     } catch (err) {
-
-        console.error('Error in final presentation generation:', err.message);
-
+        // Renderer exception -> message only; no base64 or key material in logs.
+        console.error('Error in presentation generation:', err.message);
+        if (err && err.code === 422) {
+            return res.status(422).json({ error: 'Unprocessable asset', details: err.message });
+        }
+        if (err && err.code === 400) {
+            return res.status(400).json({ error: 'Bad request', details: err.message });
+        }
         res.status(500).json({ error: 'Failed to generate presentation.', details: err.message });
-
     }
 
 });

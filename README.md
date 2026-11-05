@@ -26,6 +26,7 @@
 3. **Brand kit** — logo (SVG/PNG → base64) + primary color; applied to every slide via `defineSlideMaster`.
 4. **Branded PPTX generation** — multi-slide output with master layout, bullet content, logo on every slide, direct download.
 5. **Session Images (Sprint 09)** — upload PNG/JPEG outside the dialogue into a session library (SHA256 dedupe, license-tagged); reference image IDs in chat for per-slide art direction.
+6. **Demo renderer parity (Sprint 10)** — deterministic dark widescreen renderer (13.333×7.5, `#0B0F17`/`#00FF88`): hero, cards, standard, native-chart, CTA, and appendix layouts; aspect-preserved logo; session images assigned by role (slide-1 hero / CTA background) or per slide; robust title/bullet normalization (no `Slide N:` prefixes, no run-on bullets).
 
 ## Quickstart (local)
 
@@ -65,7 +66,8 @@ frontend/        React 19 + Vite + TailwindCSS — Liquid Glass chat UI, brand k
 backend/         Node.js + Express — /api/chat, /api/generate-outline, /api/generate-presentation, /api/assets
 backend/assetstore/  Session image library — upload/list, magic-byte probe, 50 MB LRU
 backend/creative/    Creative-director composer + mckinsey.json geometry pack
-backend/tests/       node --test suite (12 tests, zero deps): node --test backend/tests/test_sprint09.mjs
+backend/presentation/  Sprint 10 renderer — theme.js, normalize.js, renderDeck.js (hero/cards/chart/CTA/appendix)
+backend/tests/       node --test suites: test_sprint09.mjs (12) + test_normalize.mjs (27); renderer integration suite (16, incl. logo-hash + no-overlap) runs in the dev repo — 55/55 green
 python-service/  FastAPI — Z-order correction via _spTree manipulation (conditional)
 demo/winning-deck/   High-fidelity teaser deck + one-command rebuild (build_winning_deck.py) + RUNBOOK.md
 ```
@@ -84,6 +86,10 @@ All commits in this repository were made **Oct 26 – Nov 4, 2026** during the M
 ## Teaser deck
 
 `demo/winning-deck/winning_deck.pptx` — the template-engine preview from the demo's closing act (dark theme, problem/stat cards, timing chart, AI hero visuals). Rebuild deterministically with `python3 demo/winning-deck/build_winning_deck.py` (no API calls); camera runbook in `RUNBOOK.md`.
+
+## Reproduce the demo deck
+
+`demo/REPRODUCE.md` contains the one-shot prompt that regenerates the teaser deck's content through the app (same titles and bullets; art direction via the template builder). The Sprint 10 renderer closes the visual gap: dark widescreen geometry, cards, native chart, and assigned hero/finale imagery.
 
 ## License
 
