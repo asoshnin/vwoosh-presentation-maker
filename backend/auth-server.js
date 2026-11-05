@@ -5,6 +5,7 @@ import fs from 'fs'; // Import File System module
 import path from 'path'; // Import Path module
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { assetRouter } from './assetstore/routes.js'; // Sprint 09 additive
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -728,6 +729,9 @@ app.post('/api/generate-debug-test', async (req, res) => {
         });
     }
 });
+
+// --- Sprint 09 (Wave 2): session asset library — additive mount, no existing handler touched ---
+app.use('/api/assets', assetRouter(__dirname));
 
 // --- Server Start ---
 app.listen(port, () => {

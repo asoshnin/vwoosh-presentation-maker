@@ -102,6 +102,16 @@ export function ChatInterface() {
 
   const [logoError, setLogoError] = useState('');
 
+  // --- Session Images State (Sprint 09: separate upload control, dialogue stays textual) ---
+
+  const [sessionId] = useState(() => 'sess-' + Math.random().toString(36).slice(2, 10));
+
+  const [assets, setAssets] = useState<{ id: string; thumb_url: string }[]>([]);
+
+  const [assetError, setAssetError] = useState('');
+
+  const [uploadingAssets, setUploadingAssets] = useState(false);
+
 
 
   // --- Presentation Generation State ---
@@ -297,6 +307,90 @@ export function ChatInterface() {
     } catch {
 
       setLogoError('Failed to read file.');
+
+    }
+
+  };
+
+  // --- Sprint 09: Session image library (upload outside dialogue) ---
+
+  const refreshAssets = useCallback(async () => {
+
+    try {
+
+      const res = await fetch('/api/assets', { headers: { 'X-Session-Id': sessionId } });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+
+      setAssets(data.assets ?? []);
+
+    } catch {
+
+      setAssetError('Could not load image library. Is the backend running?');
+
+    }
+
+  }, [sessionId]);
+
+  const handleAssetsUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+
+    setAssetError('');
+
+    const files = Array.from(e.target.files ?? []);
+
+    if (!files.length) return;
+
+    setUploadingAssets(true);
+
+    try {
+
+      for (const file of files) {
+
+        if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+
+          setAssetError(`Skipped ${file.name}: PNG/JPEG only.`);
+
+          continue;
+
+        }
+
+        const dataUrl = await fileToBase64(file);
+
+        const data_base64 = String(dataUrl).split(',')[1] ?? '';
+
+        const res = await fetch('/api/assets', {
+
+          method: 'POST',
+
+          headers: { 'Content-Type': 'application/json', 'X-Session-Id': sessionId },
+
+          body: JSON.stringify({ filename: file.name, data_base64 }),
+
+        });
+
+        if (!res.ok) {
+
+          const err = await res.json().catch(() => ({}));
+
+          throw new Error(err?.error?.message ?? `upload failed (${res.status})`);
+
+        }
+
+      }
+
+      await refreshAssets();
+
+    } catch (err) {
+
+      setAssetError(err instanceof Error ? err.message : 'Upload failed.');
+
+    } finally {
+
+      setUploadingAssets(false);
+
+      e.target.value = '';
 
     }
 
@@ -702,6 +796,66 @@ export function ChatInterface() {
               <input type="text" id="primary-color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="px-3 py-1.5 w-32 rounded-lg border border-white/40 bg-white/25 text-gray-900 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 backdrop-blur-sm" />
 
             </div>
+
+          </div>
+
+        </GlassCard>
+
+        {/* Session Images Card (Sprint 09: upload outside dialogue; reference IDs in chat) */}
+
+        <GlassCard className="p-4">
+
+          <h2 className="text-sm font-bold text-white mb-3 tracking-wide">Session Images</h2>
+
+          <div className="space-y-2.5">
+
+            <input type="file" id="assets-upload" className="hidden" accept="image/png,image/jpeg" multiple onChange={handleAssetsUpload} />
+
+            <label htmlFor="assets-upload" className="w-full text-center px-3 py-2 bg-white/30 rounded-xl hover:bg-white/40 active:scale-[0.98] transition-all cursor-pointer block text-sm font-medium text-gray-800 border border-white/40">
+
+              {uploadingAssets ? 'Uploading...' : 'Upload Images (.png, .jpg)'}
+
+            </label>
+
+            {assetError && <p className="text-red-300 text-xs bg-red-500/20 px-2 py-1 rounded">{assetError}</p>}
+
+            {assets.length > 0 ? (
+
+              <div className="grid grid-cols-3 gap-2">
+
+                {assets.map((a) => (
+
+                  <div key={a.id} className="relative group rounded-lg overflow-hidden border border-white/40 bg-white/20">
+
+                    <img src={a.thumb_url} alt={a.id} className="w-full h-16 object-cover" />
+
+                    <button
+
+                      onClick={() => { void navigator.clipboard?.writeText(a.id); }}
+
+                      title="Click to copy image ID"
+
+                      className="absolute bottom-0 inset-x-0 text-[10px] font-mono bg-black/60 text-white py-0.5 hover:bg-black/80"
+
+                    >
+
+                      {a.id}
+
+                    </button>
+
+                  </div>
+
+                ))}
+
+              </div>
+
+            ) : (
+
+              <p className="text-white/70 text-xs">No images yet. Upload, then reference IDs in chat.</p>
+
+            )}
+
+            <button onClick={() => { void refreshAssets(); }} className="text-xs text-white/80 underline hover:text-white">Refresh library</button>
 
           </div>
 

@@ -25,6 +25,7 @@
 2. **Outline generation** — deterministic LLM synthesis of a structured `{title, slides[]}` outline from the conversation.
 3. **Brand kit** — logo (SVG/PNG → base64) + primary color; applied to every slide via `defineSlideMaster`.
 4. **Branded PPTX generation** — multi-slide output with master layout, bullet content, logo on every slide, direct download.
+5. **Session Images (Sprint 09)** — upload PNG/JPEG outside the dialogue into a session library (SHA256 dedupe, license-tagged); reference image IDs in chat for per-slide art direction.
 
 ## Quickstart (local)
 
@@ -60,9 +61,13 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for full system design and tooling disc
 ## Project structure
 
 ```
-frontend/        React 19 + Vite + TailwindCSS — Liquid Glass chat UI, brand kit, generation hub
-backend/         Node.js + Express — /api/chat, /api/generate-outline, /api/generate-presentation
+frontend/        React 19 + Vite + TailwindCSS — Liquid Glass chat UI, brand kit, Session Images, generation hub
+backend/         Node.js + Express — /api/chat, /api/generate-outline, /api/generate-presentation, /api/assets
+backend/assetstore/  Session image library — upload/list, magic-byte probe, 50 MB LRU
+backend/creative/    Creative-director composer + mckinsey.json geometry pack
+backend/tests/       node --test suite (12 tests, zero deps): node --test backend/tests/test_sprint09.mjs
 python-service/  FastAPI — Z-order correction via _spTree manipulation (conditional)
+demo/winning-deck/   High-fidelity teaser deck + one-command rebuild (build_winning_deck.py) + RUNBOOK.md
 ```
 
 ## Environment
@@ -75,6 +80,10 @@ python-service/  FastAPI — Z-order correction via _spTree manipulation (condit
 ## Provenance
 
 All commits in this repository were made **Oct 26 – Nov 4, 2026** during the Meta Global AI Developer Hackathon (Track 1 — Indie). The project builds on the dev repo at `dev/PresentationMaker` (3-service architecture validated locally) but this submission tree contains only the runtime code required to run the app.
+
+## Teaser deck
+
+`demo/winning-deck/winning_deck.pptx` — the template-engine preview from the demo's closing act (dark theme, problem/stat cards, timing chart, AI hero visuals). Rebuild deterministically with `python3 demo/winning-deck/build_winning_deck.py` (no API calls); camera runbook in `RUNBOOK.md`.
 
 ## License
 

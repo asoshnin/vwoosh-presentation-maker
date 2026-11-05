@@ -116,6 +116,22 @@ Single-operator store (`backend/.meta-key.json`, `0600`, gitignored): `PUT` acce
 4. Loop `outline.slides`: `addSlide({masterName})` → `addText(title, {color: titleColor})` → `addText(bullets, {bullet: true})` → `addImage({data: brandKit.logo})`.
 5. `write('nodebuffer')` → `res.setHeader(Content-Disposition, Content-Type) → res.send(buffer)` (in-memory; no temp files).
 
+## 4b. Session image library + creative director (Sprint 09, additive)
+
+* **Upload outside dialogue:** `POST /api/assets` takes JSON `{filename, data_base64}`
+  (PNG/JPEG, 8 MB max) under an `X-Session-Id` session (server-sanitized,
+  per-session dirs, 50 MB LRU, SHA256 dedupe). `GET /api/assets` lists the library;
+  `GET /api/assets/:id/file` serves the bytes. Rejections are JSON
+  `{error:{code,message}}` (415 non-image, 413 oversize, 422 corrupt header, 404 unknown id).
+* **Creative director:** `backend/creative/director.js` composes a per-slide manifest from
+  an outline slide + library index + the `mckinsey.json` geometry pack (13.33×7.5,
+  title/body/logo/exhibit slots). Fixed-slot composer: geometry comes from the pack, so
+  output is bounds/overlap-safe by construction; unknown image refs fall back to the logo.
+  Every image slot carries `image_meta {source_kind, license_status, alt_text}`.
+* **Frontend:** the Session Images card (between Brand Kit and Generation Hub) uploads
+  files, shows thumbnails with click-to-copy IDs for chat reference. Dialogue stays textual.
+* **Tests:** `node --test backend/tests/test_sprint09.mjs` — 12 tests, zero dependencies.
+
 ## 5. Configuration
 
 | Variable | Required | Where |
@@ -130,6 +146,7 @@ Single-operator store (`backend/.meta-key.json`, `0600`, gitignored): `PUT` acce
 * **Provenance:** every commit in this repo is dated Oct 26 – Nov 4, 2026 (hackathon window). The dev repo's broader `_DEVELOPMENT/` history is intentionally excluded from this filtered submission branch.
 * **Demo video disclosure line ( §4.1):** "Pre-existing: our prompt-engineering patterns and Liquid Glass brand-kit design system. Built during Oct 26 – Nov 4: the agentic presentation pipeline, Meta Model API integration, and the polished demo experience." — tighten to match the shipped build before recording.
 * **Video spec (§4.2):** 3 min hard cap (target 2:55–3:00), live run, human on camera preferred.
+* **Teaser deck:** `demo/winning-deck/` holds the high-fidelity teaser (`winning_deck.pptx`, one-command rebuild via `build_winning_deck.py`, AI hero visuals under `images/`, camera runbook `RUNBOOK.md`). Rebuild is deterministic — no API calls.
 
 ---
 

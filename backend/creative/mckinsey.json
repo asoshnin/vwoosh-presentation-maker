@@ -1,0 +1,17 @@
+{
+  "template_id": "mckinsey",
+  "version": "0.1.0",
+  "slide_size": { "width_in": 13.333, "height_in": 7.5 },
+  "theme": { "background": "#0B0F17", "primary": "#00FF88", "body": "#FFFFFF", "muted": "#888888" },
+  "slots": {
+    "title": { "x_in": 0.6, "y_in": 0.35, "w_in": 10.6, "h_in": 1.2, "z_order": 1, "kind": "text", "role": "title", "max_chars": 140 },
+    "body": { "x_in": 0.6, "y_in": 2.0, "w_in": 10.6, "h_in": 4.9, "z_order": 2, "kind": "text", "role": "body", "max_bullets": 5 },
+    "logo": { "x_in": 11.55, "y_in": 0.25, "w_in": 1.2, "h_in": 1.2, "z_order": 3, "kind": "image" },
+    "exhibit": { "x_in": 8.2, "y_in": 2.0, "w_in": 4.5, "h_in": 4.2, "z_order": 2, "kind": "shape", "optional": true },
+    "source": { "x_in": 8.2, "y_in": 6.9, "w_in": 4.5, "h_in": 0.3, "z_order": 4, "kind": "text", "role": "source" }
+  },
+  "license_policy": {
+    "allowed": ["user_upload", "stock", "generated", "chart_export", "icon"],
+    "generated_requires": ["model", "prompt_hash"]
+  }
+}
