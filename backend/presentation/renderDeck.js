@@ -265,7 +265,7 @@ function drawAccentBar(slide, accent) {
 function drawBody(slide, points, box, { fontSize, color, fontFace, bullet, paraSpaceAfter = 4 }) {
   if (!points.length) return;
   slide.addText(
-    points.map((text) => ({ text })),
+    points.map((text, i) => ({ text, options: i < points.length - 1 ? { breakLine: true } : {} })),
     { ...box, fontSize, color, fontFace, bullet, align: 'left', valign: 'top', margin: 0, paraSpaceAfter },
   );
 }
@@ -393,7 +393,7 @@ function renderAppendix(slide, title, content, accent) {
   });
   if (ps.length) {
     slide.addText(
-      ps.map((text) => ({ text })),
+      ps.map((text, i) => ({ text, options: i < ps.length - 1 ? { breakLine: true } : {} })),
       {
         ...PS_BOX,
         fontSize: 15,
